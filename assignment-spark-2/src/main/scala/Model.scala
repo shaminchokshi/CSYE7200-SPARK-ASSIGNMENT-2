@@ -7,7 +7,7 @@ import org.apache.spark.ml.{Pipeline, PipelineModel}
 object Model extends App {
   val spark = SparkSession
     .builder()
-    .appName("Titanic Dataset Analysis")
+    .appName("Analysis of the titanic passenger dataset")
     .master("local[*]")
     .getOrCreate()
 
@@ -15,8 +15,6 @@ object Model extends App {
 
   val testingDf = spark.read.option("header", "true").csv("assignment-spark-2/src/main/resources/test.csv")
   val trainingDf = spark.read.option("header", "true").csv("assignment-spark-2/src/main/resources/train.csv")
-
-  /** EDA */
   trainingDf.show(10) // Display the first 10 rows
   trainingDf.printSchema() // Print the schema of the dataset
   trainingDf.describe().show() // Compute basic statistics for each column
@@ -34,17 +32,17 @@ object Model extends App {
 
 
   /** Feature Engineering */
-  // Extract the titles from the Name column and create a new column called Title
+  // Extraction of the titles from the Name column and create a new column called Title
   val titleRegex = """([\w]+)\. """.r
   val getTitle = udf((name: String) => titleRegex.findFirstMatchIn(name).map(_.group(1)).getOrElse(""))
   val trainingDFWithTitle = trainingDf.withColumn("Title", getTitle($"Name"))
   val testDFWithTitle = trainingDf.withColumn("Title", getTitle($"Name"))
 
-  // Create a new column called FamilySize by adding the SibSp and Parch columns
+  // making a new column for size of family
   val trainingDFWithFamilySize = trainingDFWithTitle.withColumn("FamilySize", $"SibSp" + $"Parch" + 1)
   val testDFWithFamilySize = testDFWithTitle.withColumn("FamilySize", $"SibSp" + $"Parch" + 1)
 
-  // Create a new column called IsAlone to indicate whether a passenger was traveling alone or with family
+  // making a new column to check if passenger is alone
   val trainDFWithIsAlone = trainingDFWithFamilySize.withColumn("IsAlone", when($"FamilySize" === 1, 1).otherwise(0))
   val testDFWithIsAlone = testDFWithFamilySize.withColumn("IsAlone", when($"FamilySize" === 1, 1).otherwise(0))
 
@@ -53,10 +51,10 @@ object Model extends App {
 
   /** Prediction */
   // Select the required columns for training and testing
-  val selectedTrain = trainingDf.select("Survived", "Pclass", "Sex", "Age", "Fare", "Embarked")
-  val selectedTest = testingDf.select("PassengerId", "Pclass", "Sex", "Age", "Fare", "Embarked")
+  val selectedTrain = trainingDf.select("Survived", "Pclass", "Sex", "Age", "Fare","Cabin", "Embarked")
+  val selectedTest = testingDf.select("PassengerId", "Pclass", "Sex", "Age", "Fare","Cabin", "Embarked")
 
-  // Clean the data
+  // data cleaning
   val cleaningTrain = selectedTrain.na.drop()
   val cleanTest = selectedTest.na.drop()
 
@@ -66,14 +64,14 @@ object Model extends App {
     .withColumn("Fare", col("Fare").cast("Double"))
     .withColumn("Pclass", col("Pclass").cast("Integer"))
     .withColumn("Survived", col("Survived").cast("Integer"))
-
+    .withColumn("Cabin", col("Cabin").cast("Integer"))
   val finalTest = cleanTest
     .withColumn("Age", col("Age").cast("Double"))
     .withColumn("Fare", col("Fare").cast("Double"))
     .withColumn("Pclass", col("Pclass").cast("Integer"))
     .withColumn("PassengerId", col("PassengerId").cast("Integer"))
-
-  // Fill missing values with the mean
+    .withColumn("Cabin", col("Cabin").cast("Integer"))
+  //taking the mean of all values and filling incomplete data
   val ageMeanTrain = finalTrain.agg(avg("Age")).first()(0).asInstanceOf[Double]
   val fareMeanTrain = finalTrain.agg(avg("Fare")).first()(0).asInstanceOf[Double]
   val trainFilled = finalTrain.na.fill(ageMeanTrain, Seq("Age")).na.fill(fareMeanTrain, Seq("Fare"))
@@ -82,7 +80,7 @@ object Model extends App {
   val fareMeanTest = finalTest.agg(avg("Fare")).first()(0).asInstanceOf[Double]
   val testFilled = finalTest.na.fill(ageMeanTest, Seq("Age")).na.fill(fareMeanTest, Seq("Fare"))
 
-  // Preprocessing: StringIndexer and OneHotEncoder
+ 
   val sexIndexer = new StringIndexer()
     .setInputCol("Sex")
     .setOutputCol("SexIndex")
